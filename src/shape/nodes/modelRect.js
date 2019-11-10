@@ -271,6 +271,8 @@ Shape.registerNode('modelRect', {
 
     if (stateIcon.show) {
       labelWidth -= (stateIcon.width + 5);
+    } else {
+      labelWidth -= labelCfg.offset;
     }
 
     const isUsingCanvas = group._cfg.canvas._cfg.renderType === 'canvas';
