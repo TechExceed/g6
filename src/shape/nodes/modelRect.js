@@ -247,10 +247,12 @@ Shape.registerNode('modelRect', {
   },
   drawLabel(cfg, group) {
     const customOptions = this.getCustomConfig(cfg) || {};
-    const { labelCfg: defaultLabelCfg, logoIcon: defaultLogoIcon } = this.options;
-    const { labelCfg: customLabelCfg, logoIcon: customLogoIcon } = customOptions;
+    const { labelCfg: defaultLabelCfg, logoIcon: defaultLogoIcon, stateIcon: defaultStateIcon } = this.options;
+    const { labelCfg: customLabelCfg, logoIcon: customLogoIcon, stateIcon: customStateIcon } = customOptions;
 
     const logoIcon = deepMix({}, defaultLogoIcon, customLogoIcon, cfg.logoIcon);
+
+    const stateIcon = deepMix({}, defaultStateIcon, customStateIcon, cfg.stateIcon);
 
     const labelCfg = deepMix({}, defaultLabelCfg, customLabelCfg, cfg.labelCfg);
 
@@ -261,26 +263,37 @@ Shape.registerNode('modelRect', {
 
     const { show, width: w } = logoIcon;
     let offsetX = -width / 2 + labelCfg.offset;
-
+    let labelWidth = width - labelCfg.offset;
     if (show) {
       offsetX = -width / 2 + w + labelCfg.offset;
+      labelWidth -= w;
     }
 
+    if (stateIcon.show) {
+      labelWidth -= (stateIcon.width + 5);
+    }
+
+    const isUsingCanvas = group._cfg.canvas._cfg.renderType === 'canvas';
+    const canvasContext = isUsingCanvas ? group._cfg.canvas._cfg.painter.context : undefined;
+    const textFitFunc = isUsingCanvas ? Util.fittingStringWithContext : Util.fittingString;
+
     const { style: fontStyle } = labelCfg;
+    const labelFontSize = fontStyle && fontStyle.fontSize ? fontStyle.fontSize : 14;
+
     if (cfg.description) {
       label = group.addShape('text', {
         attrs: {
           ...fontStyle,
           y: -5,
           x: offsetX,
-          text: Util.fittingString(cfg.label, 100, 14)
+          text: textFitFunc(cfg.label, labelWidth, labelFontSize, canvasContext)
         }
       });
 
       group.addShape('text', {
         attrs: {
-          text: Util.fittingString(cfg.description, 75, 12),
-          fontSize: 12,
+          text: textFitFunc(cfg.description, labelWidth, 13, canvasContext),
+          fontSize: 13,
           x: offsetX,
           y: 17,
           fill: '#bfbfbf'
@@ -293,7 +306,7 @@ Shape.registerNode('modelRect', {
           ...fontStyle,
           x: offsetX,
           y: 7,
-          text: Util.fittingString(cfg.label, 70, 14)
+          text: textFitFunc(cfg.label, labelWidth, labelFontSize, canvasContext)
         }
       });
     }
