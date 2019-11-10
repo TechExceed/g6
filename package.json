@@ -1,13 +1,13 @@
 {
-  "name": "@antv/g6",
+  "name": "@TechExceed/g6",
   "version": "3.1.3",
   "description": "graph visualization frame work",
   "main": "build/g6.js",
-  "homepage": "https://github.com/antvis/g6",
+  "homepage": "https://github.com/TechExceed/g6",
   "author": "https://github.com/orgs/antvis/people",
   "repository": {
     "type": "git",
-    "url": "git@github.com:antvis/g6.git"
+    "url": "git@github.com:TechExceed/g6.git"
   },
   "bugs": {
     "url": "https://github.com/antvis/g6/issues"
@@ -21,16 +21,8 @@
   ],
   "contributors": [
     {
-      "email": "leanne06204@163.com",
-      "url": "https://github.com/AceLeeWinnie"
-    },
-    {
-      "email": "wyueliu@gmail.com",
-      "url": "https://github.com/liuwuyue"
-    },
-    {
-      "email": "deggs.k@gmail.com",
-      "url": "https://github.com/deggs7"
+      "email": "tech@exceed.ai",
+      "url": "https://github.com/TechExceed"
     }
   ],
   "license": "MIT",
