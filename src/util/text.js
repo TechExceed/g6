@@ -34,3 +34,29 @@ export const fittingString = (str, maxWidth, fontSize) => {
   }
   return str;
 };
+
+/**
+ * 计算显示的字符串
+ * @param {string} str 要裁剪的字符串
+ * @param {number} maxWidth 最大宽度
+ * @param {number} fontSize 字体大小
+ * @param {object} ctx canvas context
+ * @return {string} 显示的字符串
+ */
+export const fittingStringWithContext = (str, maxWidth, fontSize, ctx) => {
+  ctx.font = ctx.font.replace(/\d+px/, fontSize + 'px');
+  let width = ctx.measureText(str).width;
+  const ellipsis = '…';
+  const ellipsisWidth = ctx.measureText(ellipsis).width;
+
+  if (width <= maxWidth || width <= ellipsisWidth) {
+    return str;
+  }
+
+  let len = str.length;
+  while ((width >= maxWidth - ellipsisWidth) && len-- > 0) {
+    str = str.substring(0, len).trim();
+    width = ctx.measureText(str).width;
+  }
+  return str + ellipsis;
+};
