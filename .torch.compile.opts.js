@@ -7,7 +7,7 @@ module.exports = {
         "module-resolver",
         {
           "alias": {
-            '@antv/g6': './src/index'
+            '@exceed.ai/g6': './src/index'
           },
         }
       ],

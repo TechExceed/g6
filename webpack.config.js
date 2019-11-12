@@ -35,11 +35,11 @@ module.exports = {
     path: resolve(__dirname, 'build/')
   },
   externals: {
-    '@antv/g6': {
+    '@exceed.ai/g6': {
       root: 'G6',
-      commonjs2: '@antv/g6',
-      commonjs: '@antv/g6',
-      amd: '@antv/g6'
+      commonjs2: '@exceed.ai/g6',
+      commonjs: '@exceed.ai/g6',
+      amd: '@exceed.ai/g6'
     }
   },
   module: {
