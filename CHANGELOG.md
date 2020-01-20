@@ -1,4 +1,28 @@
 # ChangeLog
+#### 3.2.7
+* feat: supports create the group without nodes in node-group;
+* fix: supports destoryed properties and fix issue [1094](https://github.com/antvis/G6/issues/1094);
+
+#### 3.2.6
+* feat: supports sort the nodes on one circle according to the data ordering or some attribute in radial layout
+* fix: grid layout with cols and rows
+* feat: fix the nodes with position information in their original data and random the positions of others when the layout is not defined for graph
+
+#### 3.2.3
+* fix: group position error
+* fix: supports not set layout type
+
+#### 3.1.5 
+* feat: supports g6 types file
+* fix: set brush-select trigger param to ctrl not work
+* fix: when set fitView to true, drag-group Behavior not get desired positon
+
+#### 3.1.3
+* feat: radial layout nonoverlap iterations can be controlled by user
+* feat: add lock, unlock and hasLocked function, supports lock and unlock node
+* fix: mds with discrete points problem
+* fix: fruchterman-group layout title position for rect groups
+
 #### 3.1.2 
 * feat: default behavior supports configuration trigger mode
 * feat: node combining supports configuration title
