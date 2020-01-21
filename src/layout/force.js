@@ -4,8 +4,14 @@
  */
 
 const d3Force = require('d3-force');
+const isArray = require('@antv/util/lib/type/is-array');
+const isNumber = require('@antv/util/lib/type/is-number');
+const isFunction = require('@antv/util/lib/type/is-function');
 const Layout = require('./layout');
-const Util = require('../util');
+const Util = require('../util/layout');
+const layoutConst = require('./worker/layoutConst');
+
+const { LAYOUT_MESSAGE } = layoutConst;
 
 /**
  * 经典力导布局 force-directed
@@ -17,6 +23,7 @@ Layout.registerLayout('force', {
       nodeStrength: null,         // 节点作用力
       preventOverlap: false,      // 是否防止节点相互覆盖
       nodeSize: undefined,        // 节点大小 / 直径，用于防止重叠时的碰撞检测
+      nodeSpacing: undefined,     // 节点间距，防止节点重叠时节点之间的最小距离（两节点边缘最短距离）
       edgeStrength: null,         // 边的作用力, 默认为根据节点的入度出度自适应
       linkDistance: 50,           // 默认边长度
       forceSimulation: null,      // 自定义 force 方法
@@ -26,7 +33,9 @@ Layout.registerLayout('force', {
       collideStrength: 1,         // 防止重叠的力强度
       tick() {},
       onLayoutEnd() {},           // 布局完成回调
-      onTick() {}                 // 每一迭代布局回调
+      onTick() {},                // 每一迭代布局回调
+      // 是否启用web worker。前提是在web worker里执行布局，否则无效
+      workerEnabled: false
     };
   },
   /**
@@ -67,14 +76,8 @@ Layout.registerLayout('force', {
           .force('charge', nodeForce)
           .alpha(alpha)
           .alphaDecay(alphaDecay)
-          .alphaMin(alphaMin)
-          .on('tick', () => {
-            self.tick();
-          })
-          .on('end', () => {
-            self.ticking = false;
-            self.onLayoutEnd && self.onLayoutEnd();
-          });
+          .alphaMin(alphaMin);
+
         if (self.preventOverlap) {
           self.overlapProcess(simulation);
         }
@@ -97,8 +100,34 @@ Layout.registerLayout('force', {
           }
           simulation.force('link', edgeForce);
         }
+
+        if (self.workerEnabled && !isInWorker()) {
+          // 如果不是运行在web worker里，不用web worker布局
+          self.workerEnabled = false;
+          console.warn('workerEnabled option is only supported when running in web worker.');
+        }
+        if (!self.workerEnabled) {
+          simulation
+            .on('tick', () => {
+              self.tick();
+            })
+            .on('end', () => {
+              self.ticking = false;
+              self.onLayoutEnd && self.onLayoutEnd();
+            });
+          self.ticking = true;
+        } else {
+          simulation.stop();
+          const totalTicks = getSimulationTicks(simulation);
+          for (let currentTick = 1; currentTick <= totalTicks; currentTick++) {
+            simulation.tick();
+            // currentTick starts from 1.
+            postMessage({ type: LAYOUT_MESSAGE.TICK, currentTick, totalTicks, nodes });
+          }
+          self.ticking = false;
+        }
+
         self.forceSimulation = simulation;
-        self.ticking = true;
       } catch (e) {
         self.ticking = false;
         console.warn(e);
@@ -119,26 +148,52 @@ Layout.registerLayout('force', {
    */
   overlapProcess(simulation) {
     const self = this;
-    let nodeSize = self.nodeSize;
+    const nodeSize = self.nodeSize;
+    let nodeSizeFunc;
+    const nodeSpacing = self.nodeSpacing;
+    let nodeSpacingFunc;
     const collideStrength = self.collideStrength;
-    if (!nodeSize) {
-      nodeSize = d => {
-        if (d.size) {
-          if (Array.isArray(d.size)) {
-            return d.size[0] / 2;
-          }
-          return d.size / 2;
-        }
-        return 10;
+
+    if (isNumber(nodeSpacing)) {
+      nodeSpacingFunc = () => {
+        return nodeSpacing;
       };
-    } else if (!isNaN(nodeSize)) {
-      nodeSize /= 2;
-    } else if (nodeSize.length === 2) {
-      const larger = nodeSize[0] > nodeSize[1] ? nodeSize[0] : nodeSize[1];
-      nodeSize = larger / 2;
+    } else if (typeof nodeSpacing === 'function') {
+      nodeSpacingFunc = nodeSpacing;
+    } else {
+      nodeSpacingFunc = () => {
+        return 0;
+      };
     }
+
+    if (!nodeSize) {
+      nodeSizeFunc = d => {
+        if (d.size) {
+          if (isArray(d.size)) {
+            const res = d.size[0] > d.size[1] ? d.size[0] : d.size[1];
+            return res / 2 + nodeSpacingFunc(d);
+          }
+          return d.size / 2 + nodeSpacingFunc(d);
+        }
+        return 10 + nodeSpacingFunc(d);
+      };
+    } else if (isFunction(nodeSize)) {
+      nodeSizeFunc = nodeSize;
+    } else if (!isNaN(nodeSize)) {
+      const radius = nodeSize / 2;
+      nodeSizeFunc = d => {
+        return radius + nodeSpacingFunc(d);
+      };
+    } else if (isArray(nodeSize)) {
+      const larger = nodeSize[0] > nodeSize[1] ? nodeSize[0] : nodeSize[1];
+      const radius = larger / 2;
+      nodeSizeFunc = d => {
+        return radius + nodeSpacingFunc(d);
+      };
+    }
+
     // forceCollide's parameter is a radius
-    simulation.force('collisionForce', d3Force.forceCollide(nodeSize).strength(collideStrength));
+    simulation.force('collisionForce', d3Force.forceCollide(nodeSizeFunc).strength(collideStrength));
   },
   /**
    * 更新布局配置，但不执行布局
@@ -164,3 +219,20 @@ Layout.registerLayout('force', {
     self.destroyed = true;
   }
 });
+
+// Return total ticks of d3-force simulation
+function getSimulationTicks(simulation) {
+  const alphaMin = simulation.alphaMin();
+  const alphaTarget = simulation.alphaTarget();
+  const alpha = simulation.alpha();
+  const totalTicksFloat = Math.log((alphaMin - alphaTarget) / (alpha - alphaTarget)) / Math.log(1 - simulation.alphaDecay());
+  const totalTicks = Math.ceil(totalTicksFloat);
+
+  return totalTicks;
+}
+
+// 判断是否运行在web worker里
+function isInWorker() {
+  // eslint-disable-next-line no-undef
+  return typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+}

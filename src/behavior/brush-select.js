@@ -2,7 +2,7 @@ const min = Math.min;
 const max = Math.max;
 const abs = Math.abs;
 const DEFAULT_TRIGGER = 'shift';
-const ALLOW_EVENTS = [ 'drag', 'shift', 'ctrl', 'alt' ];
+const ALLOW_EVENTS = [ 'drag', 'shift', 'ctrl', 'alt', 'control' ];
 
 module.exports = {
   getDefaultCfg() {
@@ -85,7 +85,7 @@ module.exports = {
     this.graph.paint();
   },
   onMouseUp(e) {
-    if (!this.brush) {
+    if (!this.brush && !this.dragging) {
       return;
     }
 
@@ -96,7 +96,8 @@ module.exports = {
     const graph = this.graph;
     const autoPaint = graph.get('autoPaint');
     graph.setAutoPaint(false);
-    this.brush.hide();
+    this.brush.destroy();
+    this.brush = null;
     this._getSelectedNodes(e);
     this.dragging = false;
     this.graph.paint();
@@ -117,6 +118,10 @@ module.exports = {
 
     this.selectedEdges = [];
     this.onDeselect && this.onDeselect(this.selectedNodes, this.selectedEdges);
+    graph.emit('nodeselectchange', { targets: {
+      nodes: [],
+      edges: []
+    }, select: false });
     graph.paint();
     graph.setAutoPaint(autoPaint);
   },
@@ -170,6 +175,10 @@ module.exports = {
     this.selectedEdges = selectedEdges;
     this.selectedNodes = selectedNodes;
     this.onSelect && this.onSelect(selectedNodes, selectedEdges);
+    graph.emit('nodeselectchange', { targets: {
+      nodes: selectedNodes,
+      edges: selectedEdges
+    }, select: true });
   },
   _createBrush() {
     const self = this;
@@ -191,7 +200,12 @@ module.exports = {
   },
   onKeyDown(e) {
     const code = e.key;
-    if (code && code.toLowerCase() === this.trigger.toLowerCase()) {
+    if (!code) {
+      return;
+    }
+    // 按住control键时，允许用户设置trigger为ctrl
+    if (code.toLowerCase() === this.trigger.toLowerCase()
+      || code.toLowerCase() === 'control') {
       this.keydown = true;
     } else {
       this.keydown = false;
@@ -199,7 +213,9 @@ module.exports = {
   },
   onKeyUp() {
     if (this.brush) {
-      this.brush.hide();
+      // 清除所有选中状态后，设置拖得动状态为false，并清除框选的brush
+      this.brush.destroy();
+      this.brush = null;
       this.dragging = false;
     }
     this.keydown = false;

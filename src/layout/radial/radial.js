@@ -4,9 +4,11 @@
  */
 
 const Layout = require('../layout');
-const Util = require('../../util');
+const Util = require('../../util/layout');
 const RadialNonoverlapForce = require('./radialNonoverlapForce');
 const MDS = require('./mds');
+const isArray = require('@antv/util/lib/type/is-array');
+const isNumber = require('@antv/util/lib/type/is-number');
 
 function getWeightMatrix(M) {
   const rows = M.length;
@@ -45,8 +47,13 @@ Layout.registerLayout('radial', {
       focusNode: null,            // 中心点，默认为数据中第一个点
       unitRadius: null,           // 每一圈半径
       linkDistance: 50,           // 默认边长度
-      preventOverlap: false,          // 是否防止重叠
-      nodeSize: 10                // 节点直径
+      preventOverlap: false,      // 是否防止重叠
+      nodeSize: undefined,        // 节点直径
+      nodeSpacing: undefined,     // 节点间距，防止节点重叠时节点之间的最小距离（两节点边缘最短距离）
+      strictRadial: true,              // 是否必须是严格的 radial 布局，即每一层的节点严格布局在一个环上。preventOverlap 为 true 时生效。
+      maxPreventOverlapIteration: 200, // 防止重叠步骤的最大迭代次数
+      sortBy: undefined,
+      sortStrength: 10
     };
   },
   /**
@@ -99,8 +106,14 @@ Layout.registerLayout('radial', {
 
     // the shortest path distance from each node to focusNode
     const focusNodeD = D[focusIndex];
-    const width = self.width || window.innerHeight;
-    const height = self.height || window.innerWidth;
+    let width = self.width;
+    if (!width && typeof window !== 'undefined') {
+      width = window.innerWidth;
+    }
+    let height = self.height;
+    if (!height && typeof height !== 'undefined') {
+      height = window.innerHeight;
+    }
     let semiWidth = width - center[0] > center[0] ? center[0] : width - center[0];
     let semiHeight = height - center[1] > center[1] ? center[1] : height - center[1];
     if (semiWidth === 0) {
@@ -124,6 +137,7 @@ Layout.registerLayout('radial', {
 
 
     const eIdealD = self.eIdealDisMatrix(D, linkDistance, radii);
+
     // const eIdealD = scaleMatrix(D, linkDistance);
     self.eIdealDistances = eIdealD;
     // the weight matrix, Wij = 1 / dij^(-2)
@@ -150,13 +164,53 @@ Layout.registerLayout('radial', {
     self.run();
     const preventOverlap = self.preventOverlap;
     const nodeSize = self.nodeSize;
+    let nodeSizeFunc;
+    const strictRadial = self.strictRadial;
     // stagger the overlapped nodes
     if (preventOverlap) {
+      const nodeSpacing = self.nodeSpacing;
+      let nodeSpacingFunc;
+      if (isNumber(nodeSpacing)) {
+        nodeSpacingFunc = () => {
+          return nodeSpacing;
+        };
+      } else if (typeof nodeSpacing === 'function') {
+        nodeSpacingFunc = nodeSpacing;
+      } else {
+        nodeSpacingFunc = () => {
+          return 0;
+        };
+      }
+
+      if (!nodeSize) {
+        nodeSizeFunc = d => {
+          if (d.size) {
+            if (isArray(d.size)) {
+              const res = d.size[0] > d.size[1] ? d.size[0] : d.size[1];
+              return res + nodeSpacingFunc(d);
+            }
+            return d.size + nodeSpacingFunc(d);
+          }
+          return 10 + nodeSpacingFunc(d);
+        };
+      } else {
+        if (isArray(nodeSize)) {
+          nodeSizeFunc = d => {
+            const res = nodeSize[0] > nodeSize[1] ? nodeSize[0] : nodeSize[1];
+            return res + nodeSpacingFunc(d);
+          };
+        } else {
+          nodeSizeFunc = d => {
+            return nodeSize + nodeSpacingFunc(d);
+          };
+        }
+      }
       const nonoverlapForce = new RadialNonoverlapForce({
-        nodeSize, adjMatrix, positions, radii, height, width,
+        nodeSizeFunc, adjMatrix, positions, radii, height, width, strictRadial,
         focusID: focusIndex,
-        iterations: 200,
-        k: positions.length / 4.5
+        iterations: self.maxPreventOverlapIteration || 200,
+        k: positions.length / 4.5,
+        nodes
       });
       positions = nonoverlapForce.layout();
     }
@@ -222,12 +276,28 @@ Layout.registerLayout('radial', {
     const radii = self.radii;
     const unitRadius = self.unitRadius;
     const result = [];
+    const nodes = self.nodes;
     D.forEach((row, i) => {
       const newRow = [];
       row.forEach((v, j) => {
         if (i === j) newRow.push(0);
         else if (radii[i] === radii[j]) { // i and j are on the same circle
-          newRow.push(v * linkDis / (radii[i] / unitRadius));
+          if (self.sortBy === 'data') { // sort the nodes on the same circle according to the ordering of the data
+            newRow.push(v * (Math.abs(i - j) * self.sortStrength) / (radii[i] / unitRadius));
+          } else if (self.sortBy) { // sort the nodes on the same circle according to the attributes
+            let iValue = nodes[i][self.sortBy] || 0;
+            let jValue = nodes[j][self.sortBy] || 0;
+            if (Util.isString(iValue)) {
+              iValue = iValue.charCodeAt(0);
+            }
+            if (Util.isString(jValue)) {
+              jValue = jValue.charCodeAt(0);
+            }
+            newRow.push(v * (Math.abs(iValue - jValue) * self.sortStrength) / (radii[i] / unitRadius));
+          } else {
+            newRow.push(v * linkDis / (radii[i] / unitRadius));
+          }
+
         } else { // i and j are on different circle
           const link = (linkDis + unitRadius) / 2;
           newRow.push(v * link);

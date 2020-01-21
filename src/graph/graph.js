@@ -512,10 +512,39 @@ class Graph extends EventEmitter {
     Util.each(data.edges, edge => {
       self.add(EDGE, edge);
     });
+
+    if (!this.get('groupByTypes')) {
+      // 为提升性能，选择数量少的进行操作
+      if (data.nodes.length < data.edges.length) {
+        const nodes = this.getNodes();
+        // 遍历节点实例，将所有节点提前。
+        nodes.forEach(node => {
+          node.toFront();
+        });
+      } else {
+        const edges = this.getEdges();
+        // 遍历节点实例，将所有节点提前。
+        edges.forEach(edge => {
+          edge.toBack();
+        });
+
+      }
+    }
+
     // layout
     const layoutController = self.get('layoutController');
-    layoutController.layout();
-    self.refreshPositions();
+    if (!layoutController.layout(success)) {
+      success();
+    }
+
+    function success() {
+      if (self.get('fitView')) {
+        self.get('viewController')._fitView();
+      }
+      self.paint();
+      self.setAutoPaint(autoPaint);
+      self.emit('afterrender');
+    }
 
     // 防止传入的数据不存在nodes
     if (data.nodes) {
@@ -529,13 +558,6 @@ class Graph extends EventEmitter {
         this.renderCustomGroup(data, groupType);
       }
     }
-
-    if (self.get('fitView')) {
-      self.get('viewController')._fitView();
-    }
-    self.paint();
-    self.setAutoPaint(autoPaint);
-    self.emit('afterrender');
   }
 
   /**
@@ -630,12 +652,13 @@ class Graph extends EventEmitter {
     this.set({ nodes: items.nodes, edges: items.edges });
     const layoutController = this.get('layoutController');
     layoutController.changeData();
-    if (self.get('animate')) {
+    if (self.get('animate') && !layoutController.getLayoutType()) {
+      // 如果没有指定布局
       self.positionsAnimate();
     } else {
-      this.paint();
+      self.paint();
     }
-    this.setAutoPaint(autoPaint);
+    self.setAutoPaint(autoPaint);
     return this;
   }
   _diffItems(type, items, models) {
@@ -1079,29 +1102,31 @@ class Graph extends EventEmitter {
     const link = document.createElement('a');
     setTimeout(() => {
       const dataURL = self.toDataURL();
-      if (window.Blob && window.URL && renderer !== 'svg') {
-        const arr = dataURL.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-          u8arr[n] = bstr.charCodeAt(n);
-        }
-        const blobObj = new Blob([ u8arr ], { type: mime });
-        if (window.navigator.msSaveBlob) {
-          window.navigator.msSaveBlob(blobObj, fileName);
+      if (typeof window !== 'undefined') {
+        if (window.Blob && window.URL && renderer !== 'svg') {
+          const arr = dataURL.split(',');
+          const mime = arr[0].match(/:(.*?);/)[1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const blobObj = new Blob([ u8arr ], { type: mime });
+          if (window.navigator.msSaveBlob) {
+            window.navigator.msSaveBlob(blobObj, fileName);
+          } else {
+            link.addEventListener('click', function() {
+              link.download = fileName;
+              link.href = window.URL.createObjectURL(blobObj);
+            });
+          }
         } else {
           link.addEventListener('click', function() {
             link.download = fileName;
-            link.href = window.URL.createObjectURL(blobObj);
+            link.href = dataURL;
           });
         }
-      } else {
-        link.addEventListener('click', function() {
-          link.download = fileName;
-          link.href = dataURL;
-        });
       }
       const e = document.createEvent('MouseEvents');
       e.initEvent('click', false, false);
@@ -1158,8 +1183,9 @@ class Graph extends EventEmitter {
     if (!newLayoutType || oriLayoutType === newLayoutType) {
       // no type or same type, update layout
       const layoutCfg = {};
-      Util.mix(layoutCfg, cfg);
+      Util.mix(layoutCfg, oriLayoutCfg, cfg);
       layoutCfg.type = oriLayoutType ? oriLayoutType : 'random';
+      this.set('layout', layoutCfg);
       layoutController.updateLayoutCfg(layoutCfg);
     } else { // has different type, change layout
       this.set('layout', cfg);
@@ -1172,6 +1198,13 @@ class Graph extends EventEmitter {
    */
   layout() {
     const layoutController = this.get('layoutController');
+    const layoutCfg = this.get('layout');
+
+    if (layoutCfg.workerEnabled) {
+      // 如果使用web worker布局
+      layoutController.layout();
+      return;
+    }
     if (layoutController.layoutMethod) {
       layoutController.relayout();
     } else {

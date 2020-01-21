@@ -3,8 +3,8 @@
  * @author huangtonger@aliyun.com
  */
 
-
 const Util = require('../../util');
+const ORIGIN_MATRIX = Util.mat3.create();
 
 class View {
   constructor(graph) {
@@ -55,7 +55,14 @@ class View {
     return { x: point.clientX, y: point.clientY };
   }
   getPointByCanvas(canvasX, canvasY) {
-    const viewportMatrix = this.graph.get('group').getMatrix();
+    let viewportMatrix = this.graph.get('group').getMatrix();
+    // 判断 viewportMatrix 是否为 NaN，发现异常使用默认 matrix
+    for (let i = 0; i < viewportMatrix.length; i++) {
+      if (isNaN(viewportMatrix[i])) {
+        viewportMatrix = ORIGIN_MATRIX;
+        break;
+      }
+    }
     const point = Util.invertMatrix({ x: canvasX, y: canvasY }, viewportMatrix);
     return point;
   }
@@ -65,7 +72,7 @@ class View {
   }
   focus(item) {
     if (Util.isString(item)) {
-      item = this.graph.findById[item];
+      item = this.graph.findById(item);
     }
     if (item) {
       const matrix = item.get('group').getMatrix();
